@@ -55,6 +55,13 @@ local setup_plugin = function()
     group = utils.augroup("SourcePath"),
     pattern = M.opts.source_path .. "/*",
     callback = function(ev)
+      local b = ev.buf
+      local b_ftype = vim.bo[b].filetype
+
+      if b_ftype or b_ftype == "" then
+        return
+      end
+
       chezmoi_edit:on_edit(ev.buf)
     end,
   })
