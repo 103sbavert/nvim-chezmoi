@@ -199,7 +199,13 @@ function M:detect_filetype(buf)
       end
 
       if ft ~= nil and ft ~= "" then
-        set_filetype(ft)
+        if
+          vim.api.nvim_buf_is_valid(buf)
+          and vim.api.nvim_buf_get_name(buf) == source_file
+          and vim.bo[buf].filetype ~= ft
+        then
+          vim.bo[buf].filetype = ft
+        end
 
         vim.filetype.add({
           filename = {
