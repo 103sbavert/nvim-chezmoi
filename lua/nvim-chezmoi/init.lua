@@ -58,7 +58,7 @@ local setup_plugin = function()
       local b = ev.buf
       local b_ftype = vim.bo[b].filetype
 
-      if b_ftype or b_ftype == "" then
+      if not b_ftype or b_ftype == "" then
         return
       end
 
