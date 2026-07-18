@@ -192,10 +192,15 @@ function M:detect_filetype(buf)
 
       -- Could't find the filetype, try temp buf
       if ft == nil or ft == "" then
-        local tmp_buf = vim.api.nvim_create_buf(true, true)
-        vim.api.nvim_buf_set_name(tmp_buf, target_file)
-        ft = vim.filetype.match({ buf = tmp_buf }) or ""
-        vim.api.nvim_buf_delete(tmp_buf, { force = true })
+        local existing = vim.fn.bufnr(target_file)
+        if existing ~= -1 and vim.api.nvim_buf_is_valid(existing) then
+          ft = vim.filetype.match({ buf = existing }) or ""
+        else
+          local tmp_buf = vim.api.nvim_create_buf(true, true)
+          vim.api.nvim_buf_set_name(tmp_buf, target_file)
+          ft = vim.filetype.match({ buf = tmp_buf }) or ""
+          vim.api.nvim_buf_delete(tmp_buf, { force = true })
+        end
       end
 
       if ft ~= nil and ft ~= "" then
