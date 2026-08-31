@@ -31,16 +31,11 @@ function M:userCommands()
     }
 end
 
----@param args? string[]
+---@param result ChezmoiCommandResult
 ---@return ChezmoiCommandResult
-function M:exec(args)
-    local result = command.exec(self, args)
+local function parse(result)
     if not result.success or #result.data == 0 or result.data[1] == "{}" then
-        return {
-            args = result.args,
-            success = false,
-            data = {},
-        }
+        return { args = result.args, success = false, data = {} }
     end
 
     local managed_files = {}
@@ -62,11 +57,23 @@ function M:exec(args)
         })
     end
 
-    return {
-        args = result.args,
-        success = true,
-        data = managed_files,
-    }
+    return { args = result.args, success = true, data = managed_files }
+end
+
+---@param args? string[]
+---@return ChezmoiCommandResult
+function M:exec(args)
+    return parse(command.exec(self, args))
+end
+
+---@param args? string[]
+---@param callback? fun(result: ChezmoiCommandResult)
+function M:async(args, callback)
+    command.async(self, args, function(raw)
+        if type(callback) == "function" then
+            callback(parse(raw))
+        end
+    end)
 end
 
 return M
