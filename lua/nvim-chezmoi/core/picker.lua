@@ -35,38 +35,51 @@ local function chezmoi_diff_preview(ctx)
     )
 end
 
+local NOTIF_ID = "nvim-chezmoi.managed"
+
 M.pick_managed = function()
-    local files = require("nvim-chezmoi.chezmoi.commands.managed"):exec()
-    local items = {}
-    if files.success then
-        for _, v in pairs(files.data) do
-            items[#items + 1] = {
-                text = v.relative,
-                file = v.sourceAbsolute,
-                target_file = v.absolute,
-                isEncrypted = v:isEncrypted(),
-            }
-        end
-    end
-    Snacks.picker({
-        title = "Managed Files",
-        items = items,
-        format = "file",
-        preview = chezmoi_diff_preview,
-        confirm = function(picker, item)
-            picker:close()
-            if not item then
-                return
-            end
-            if item.isEncrypted then
-                require("nvim-chezmoi.chezmoi.commands.edit"):exec(
-                    item.target_file
-                )
-            else
-                vim.cmd.edit(item.file)
-            end
+    Snacks.notifier("Loading managed files…", vim.log.levels.INFO, {
+        id = NOTIF_ID,
+        title = "Chezmoi",
+        timeout = false,
+        opts = function(n)
+            n.icon = Snacks.util.spinner()
         end,
     })
+
+    require("nvim-chezmoi.chezmoi.commands.managed"):async({}, function(files)
+        Snacks.notifier.hide(NOTIF_ID)
+
+        local items = {}
+        if files.success then
+            for _, v in pairs(files.data) do
+                items[#items + 1] = {
+                    text = v.relative,
+                    file = v.absolute,
+                    source_file = v.sourceAbsolute,
+                    isEncrypted = v:isEncrypted(),
+                }
+            end
+        end
+
+        Snacks.picker({
+            title = "Managed Files",
+            items = items,
+            format = "file",
+            -- preview = chezmoi_diff_preview,   -- intentionally disabled (too slow)
+            confirm = function(picker, item)
+                picker:close()
+                if not item then
+                    return
+                end
+                if item.isEncrypted then
+                    require("nvim-chezmoi.chezmoi.commands.edit"):exec(item.file)
+                else
+                    vim.cmd.edit(item.source_file)
+                end
+            end,
+        })
+    end)
 end
 
 M.pick_special_files = function()
