@@ -15,30 +15,30 @@ M.__index = M
 ---@param args ChezmoiManagedFileNewArgs
 ---@return ChezmoiManagedFile
 function M:new(args)
-  local instance = setmetatable({}, self)
-  local try_set = function(k, v)
-    if v then
-      instance[k] = v
+    local instance = setmetatable({}, self)
+    local try_set = function(k, v)
+        if v then
+            instance[k] = v
+        end
     end
-  end
 
-  try_set("absolute", args.absolute)
-  try_set("relative", args.relative)
-  try_set("sourceAbsolute", args.sourceAbsolute)
-  try_set("sourceRelative", args.sourceRelative)
+    try_set("absolute", args.absolute)
+    try_set("relative", args.relative)
+    try_set("sourceAbsolute", args.sourceAbsolute)
+    try_set("sourceRelative", args.sourceRelative)
 
-  return instance
+    return instance
 end
 
 function M:isEncrypted()
-  return string.find(
-    vim.fn.fnamemodify(self.sourceAbsolute, ":t"),
-    "^encrypted_"
-  ) ~= nil
+    return string.find(
+        vim.fn.fnamemodify(self.sourceAbsolute, ":t"),
+        "^encrypted_"
+    ) ~= nil
 end
 
 function M:isTemplate()
-  return vim.fn.fnamemodify(self.sourceAbsolute, ":t"):match("%.tmpl") ~= nil
+    return vim.fn.fnamemodify(self.sourceAbsolute, ":t"):match("%.tmpl") ~= nil
 end
 
 return M

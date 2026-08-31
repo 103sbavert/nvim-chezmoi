@@ -2,34 +2,33 @@
 --- @class NvimChezmoi.Core.Log
 --- @field print_debug boolean If `true`, enables printing debug messages.
 local T = {
-  print_debug = false,
+    print_debug = false,
 }
 
 local notify = function(message, level)
-  vim.schedule(function()
-    if type(message) == "string" then
-      vim.notify(message, level, { title = "nvim-chezmoi" })
-    elseif type(message) == "table" then
-      vim.notify(table.concat(message, "\n"), level, { title = "nvim-chezmoi" })
-    end
-  end)
+    vim.schedule(function()
+        if type(message) == "string" then
+            vim.notify(message, level, { title = "nvim-chezmoi" })
+        elseif type(message) == "table" then
+            vim.notify(
+                table.concat(message, "\n"),
+                level,
+                { title = "nvim-chezmoi" }
+            )
+        end
+    end)
 end
 
-function T.info(message)
-  notify(message, vim.log.levels.INFO)
-end
+function T.info(message) notify(message, vim.log.levels.INFO) end
 
 function T.debug(message)
-  local logLevel = T.print_debug and vim.log.levels.INFO or vim.log.levels.DEBUG
-  notify(message, logLevel)
+    local logLevel = T.print_debug and vim.log.levels.INFO
+        or vim.log.levels.DEBUG
+    notify(message, logLevel)
 end
 
-function T.error(message)
-  notify(message, vim.log.levels.ERROR)
-end
+function T.error(message) notify(message, vim.log.levels.ERROR) end
 
-function T.warn(message)
-  notify(message, vim.log.levels.WARN)
-end
+function T.warn(message) notify(message, vim.log.levels.WARN) end
 
 return T
