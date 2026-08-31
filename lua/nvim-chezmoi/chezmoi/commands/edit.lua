@@ -143,9 +143,10 @@ end
 ---with `source_path:async`, so the caller is not blocked.
 ---@param file string
 ---@param callback? fun(result: ChezmoiCommandResult)
+---@return Job
 function M:async(file, callback)
     file = vim.fn.expand(file)
-    require("nvim-chezmoi.chezmoi.commands.source_path"):async(
+    local job = require("nvim-chezmoi.chezmoi.commands.source_path"):async(
         { file },
         function(result)
             if not result.success then
@@ -177,6 +178,8 @@ function M:async(file, callback)
             end
         end
     )
+
+    return job
 end
 
 ---Detects and sets filetype for `buf` using the target path.

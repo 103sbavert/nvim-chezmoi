@@ -62,14 +62,13 @@ end
 
 ---@param args? string[]
 ---@return ChezmoiCommandResult
-function M:exec(args)
-    return parse(command.exec(self, args))
-end
+function M:exec(args) return parse(command.exec(self, args)) end
 
 ---@param args? string[]
 ---@param callback? fun(result: ChezmoiCommandResult)
+---@return Job
 function M:async(args, callback)
-    command.async(self, args, function(raw)
+    return command.async(self, args, function(raw)
         if type(callback) == "function" then
             callback(parse(raw))
         end

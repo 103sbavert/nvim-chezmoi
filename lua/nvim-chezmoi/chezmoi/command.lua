@@ -150,6 +150,7 @@ end
 
 ---@param args? string[]
 ---@param callback? fun(result: ChezmoiCommandResult)
+---@return Job
 function M:async(args, callback)
     local job = newJob(self, args or {})
     if type(callback) == "function" then
@@ -159,6 +160,7 @@ function M:async(args, callback)
     end
 
     job:start()
+    return job
 end
 
 return M
