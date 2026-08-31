@@ -138,6 +138,47 @@ function M:exec(file)
     end
 end
 
+---Opens the specified `file` in a new buffer asynchronously.
+---Identical to `exec` but replaces the blocking `source_path:exec` call
+---with `source_path:async`, so the caller is not blocked.
+---@param file string
+---@param callback? fun(result: ChezmoiCommandResult)
+function M:async(file, callback)
+    file = vim.fn.expand(file)
+    require("nvim-chezmoi.chezmoi.commands.source_path"):async(
+        { file },
+        function(result)
+            if not result.success then
+                if type(callback) == "function" then
+                    callback(result)
+                end
+                return
+            end
+
+            file = result.data[1]
+
+            if chezmoi_helper.is_encrypted(file) then
+                local decrypt_result = chezmoi_decrypt:exec(file)
+                if decrypt_result.success then
+                    local bufnr = decrypt_result.data[1]
+                    if bufnr ~= -1 then
+                        self:on_edit(bufnr)
+                        log.warn("Consider using `chezmoi edit` instead.")
+                    end
+                end
+                if type(callback) == "function" then
+                    callback(decrypt_result)
+                end
+            else
+                vim.cmd.edit(file)
+                if type(callback) == "function" then
+                    callback({ args = {}, success = true, data = {} })
+                end
+            end
+        end
+    )
+end
+
 ---Detects and sets filetype for `buf` using the target path.
 ---@param buf integer
 function M:detect_filetype(buf)
