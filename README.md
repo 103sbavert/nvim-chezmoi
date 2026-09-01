@@ -89,6 +89,13 @@ Encrypted files have partial supported. Tested and working fine for gpg encrypti
 - `:ChezmoiDetectFileType`: Detects the correct filetype for the opened source file. Not really much use since it does it by default whenever you open a file.
 
 ## To do
+- Eliminate plenary dependency entirely (tracked in https://github.com/103sbavert/nvim-chezmoi/issues/3)
+- Implement async-variants of all command modules
+- Merge features in [my Neovim config](https://github.com/103sbavert/nvim-config/tree/main/lua/config/plugins/chezmoi) built atop this plugin into the plugin directly:
+  - Notifications and progress spinners
+  - Exit inhibiting if a job is in progress
+  - Auto-detection
+  - Live template preview
 
 ## Acknowledgements
 
@@ -97,6 +104,7 @@ Stuff that helped me or inspired this:
 - [chezmoi](https://www.chezmoi.io/)
 - [plenary](https://github.com/nvim-lua/plenary.nvim/)
 - [snacks.nvim](https://github.com/folke/snacks.nvim)
+- [andre-kotake/nvim-chezmoi](https://github.com/andre-kotake/nvim-chezmoi) (fork of)
 
 For cool alternatives:
 
