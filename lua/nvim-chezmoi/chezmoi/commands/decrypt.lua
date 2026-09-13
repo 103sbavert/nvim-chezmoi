@@ -72,32 +72,6 @@ function M:exec(file)
         success = bufnr ~= -1,
         data = { bufnr },
     }
-
-    -- local result =
-    --   vim.fn.systemlist("gpg --batch --yes --quiet --decrypt " .. file)
-    --
-    -- -- Print the result of the command (e.g., error messages or success)
-    -- if vim.v.shell_error == 0 then
-    --   local bufnr =
-    --     chezmoi_helper.create_buf(vim.fn.tempname(), result, true, false, true)
-    --
-    --   self:create_autocmds({ bufnr = bufnr, file = file })
-    --   vim.api.nvim_buf_set_var(bufnr, "encrypted_source_path", file)
-    --   vim.bo[bufnr].modified = false
-    --   vim.cmd([[redraw!]])
-    --
-    --   return {
-    --     success = bufnr ~= -1,
-    --     data = { bufnr },
-    --   }
-    -- else
-    --   log.error(result)
-    --   vim.cmd([[redraw!]])
-    --   return {
-    --     success = false,
-    --     data = result,
-    --   }
-    -- end
 end
 
 return M
