@@ -42,9 +42,7 @@ M.pick_managed = function()
         id = NOTIF_ID,
         title = "Chezmoi",
         timeout = false,
-        opts = function(n)
-            n.icon = Snacks.util.spinner()
-        end,
+        opts = function(n) n.icon = Snacks.util.spinner() end,
     })
 
     require("nvim-chezmoi.chezmoi.commands.managed"):async({}, function(files)
@@ -73,7 +71,9 @@ M.pick_managed = function()
                     return
                 end
                 if item.isEncrypted then
-                    require("nvim-chezmoi.chezmoi.commands.edit"):exec(item.file)
+                    require("nvim-chezmoi.chezmoi.commands.edit"):exec(
+                        item.file
+                    )
                 else
                     vim.cmd.edit(item.source_file)
                 end
