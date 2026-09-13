@@ -143,7 +143,7 @@ end
 ---with `source_path:async`, so the caller is not blocked.
 ---@param file string
 ---@param callback? fun(result: ChezmoiCommandResult)
----@return Job
+---@return vim.SystemObj Process handle.
 function M:async(file, callback)
     file = vim.fn.expand(file)
     local job = require("nvim-chezmoi.chezmoi.commands.source_path"):async(

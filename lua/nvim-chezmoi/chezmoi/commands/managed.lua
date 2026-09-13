@@ -66,7 +66,7 @@ function M:exec(args) return parse(command.exec(self, args)) end
 
 ---@param args? string[]
 ---@param callback? fun(result: ChezmoiCommandResult)
----@return Job
+---@return vim.SystemObj Process handle.
 function M:async(args, callback)
     return command.async(self, args, function(raw)
         if type(callback) == "function" then

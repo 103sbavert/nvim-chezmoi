@@ -1,6 +1,6 @@
 local log = require("nvim-chezmoi.core.log")
 local utils = require("nvim-chezmoi.core.utils")
-local Job = require("plenary.job")
+local job = require("nvim-chezmoi.core.job")
 
 ---Result of an executed command
 ---@class ChezmoiCommandResult
@@ -24,6 +24,7 @@ local Job = require("plenary.job")
 ---Autocmd for chezmoi files
 ---@class ChezmoiAutoCommand
 ---@field event string|string[]
+---@field opts? vim.api.keyset.create_autocmd
 ---@class ChezmoiCommand
 ---@field cmd string
 ---@field args? string[] Default args for command.
@@ -97,50 +98,21 @@ function M:create_buf_user_commands(bufnr)
     end
 end
 
----@param job Job
----@return ChezmoiCommandResult
-local function getJobResult(job)
-    local result = job:result()
-    local success = job.code == 0
-
-    if not success then
-        -- Error, trim each and join with newline
-        local stderr = {}
-        for _, v in ipairs(job:stderr_result()) do
-            stderr[#stderr + 1] = v:gsub("^%s*(.-)%s*$", "%1")
-        end
-        result = { table.concat(stderr, "\n") }
-        success = false
-    end
-
-    return {
-        args = job.args,
-        success = success,
-        data = result,
-    }
-end
-
 ---@param self ChezmoiCommand
----@param args string[]
----@param stdin? string[]
-local function newJob(self, args, stdin)
-    vim.list_extend(args, self.args)
-    args = vim.list_extend({ self.cmd }, args)
-    return Job:new({
-        command = "chezmoi",
-        args = args,
-        writer = stdin,
-    })
+---@param args? string[]
+---@return string[] Full argv: `{ "chezmoi", cmd, ...args, ...self.args }`.
+local function full_argv(self, args)
+    local argv = { "chezmoi", self.cmd }
+    vim.list_extend(argv, args or {})
+    vim.list_extend(argv, self.args or {})
+    return argv
 end
 
 ---@param args? string[]
----@param stdin? string[]
+---@param stdin? string[]|string
 ---@return ChezmoiCommandResult
 function M:exec(args, stdin)
-    local job = newJob(self, args or {}, stdin or {})
-    job:sync(60000)
-
-    local result = getJobResult(job)
+    local result = job.run(full_argv(self, args), stdin)
     if not result.success then
         log.error(result.data)
     end
@@ -150,17 +122,9 @@ end
 
 ---@param args? string[]
 ---@param callback? fun(result: ChezmoiCommandResult)
----@return Job
+---@return vim.SystemObj Process handle.
 function M:async(args, callback)
-    local job = newJob(self, args or {})
-    if type(callback) == "function" then
-        job:add_on_exit_callback(function(j)
-            vim.schedule(function() callback(getJobResult(j)) end)
-        end)
-    end
-
-    job:start()
-    return job
+    return job.run_async(full_argv(self, args), nil, nil, callback)
 end
 
 return M
