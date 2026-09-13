@@ -170,7 +170,7 @@ function M:async(file, callback)
                     callback(decrypt_result)
                 end
             else
-                vim.cmd.edit(file)
+                vim.cmd.tabedit(file)
                 if type(callback) == "function" then
                     callback({ args = {}, success = true, data = {} })
                 end
