@@ -58,14 +58,13 @@ function M:autoCommands(bufnr)
                     end
 
                     if self.opts.edit.apply_on_save == "confirm" then
-                        local choice = vim.fn.confirm(
-                            "Apply " .. ev.file .. "?",
-                            "&Yes\n&No",
-                            2
-                        )
-                        if choice == 1 then
-                            apply()
-                        end
+                        local choice = vim.ui.select({ "Yes", "No" }, {
+                            prompt = "Apply " .. ev.file .. "?",
+                        }, function(_, choice_idx)
+                            if choice_idx == 1 then
+                                apply()
+                            end
+                        end)
                     elseif self.opts.edit.apply_on_save == "auto" then
                         apply()
                     end
