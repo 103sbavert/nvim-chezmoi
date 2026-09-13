@@ -2,7 +2,7 @@ local M = {}
 
 M.trim = function(s) return s:gsub("^%s*(.-)%s*$", "%1") end
 
-M.fullpath = function(s) return vim.fn.fnamemodify(s, ":p") end
+M.fullpath = function(s) return vim.fs.normalize(vim.fs.abspath(s)) end
 
 M.strip_path = function(s, prefix)
     return s:gsub("^" .. prefix, ""):gsub("^/", "")
@@ -17,8 +17,8 @@ end
 
 M.is_child_of = function(parent_dir, file_path)
     -- Normalize paths for consistent comparison
-    local parent_dir_norm = vim.fn.fnamemodify(parent_dir, ":p")
-    local file_path_norm = vim.fn.fnamemodify(file_path, ":p")
+    local parent_dir_norm = vim.fs.normalize(parent_dir)
+    local file_path_norm = vim.fs.normalize(file_path)
 
     -- Check if file_path is a child of parent_dir
     return file_path_norm:sub(1, #parent_dir_norm) == parent_dir_norm

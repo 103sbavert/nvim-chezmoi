@@ -31,14 +31,12 @@ function M:new(args)
 end
 
 function M:isEncrypted()
-    return string.find(
-        vim.fn.fnamemodify(self.sourceAbsolute, ":t"),
-        "^encrypted_"
-    ) ~= nil
+    return string.find(vim.fs.basename(self.sourceAbsolute), "^encrypted_")
+        ~= nil
 end
 
 function M:isTemplate()
-    return vim.fn.fnamemodify(self.sourceAbsolute, ":t"):match("%.tmpl") ~= nil
+    return vim.fs.basename(self.sourceAbsolute):match("%.tmpl") ~= nil
 end
 
 return M

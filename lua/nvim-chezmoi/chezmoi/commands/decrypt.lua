@@ -39,7 +39,7 @@ function M:autoCommands(args)
             opts = {
                 group = "DeleteDecryptedFile",
                 buffer = args.bufnr,
-                callback = function(ev) vim.fn.delete(ev.file) end,
+                callback = function(ev) vim.uv.fs_unlink(ev.file) end,
             },
         },
     }

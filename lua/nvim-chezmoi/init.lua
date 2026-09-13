@@ -79,16 +79,21 @@ function M.setup(opts)
 
                 -- Create buf user commands for already opened source file buffer.
                 local utils = require("nvim-chezmoi.core.utils")
-                for _, buf in ipairs(vim.fn.getbufinfo({ buf = "buflisted" })) do
-                    local file_path = vim.fn.bufname(buf.bufnr)
-                    -- Only check buffers with a valid file path
+                for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
                     if
-                        file_path ~= ""
-                        and utils.is_child_of(M.opts.source_path, file_path)
+                        vim.api.nvim_buf_is_valid(bufnr)
+                        and vim.bo[bufnr].buflisted
                     then
-                        vim.api.nvim_exec_autocmds({ "BufRead" }, {
-                            buffer = buf.bufnr,
-                        })
+                        local file_path = vim.api.nvim_buf_get_name(bufnr)
+                        -- Only check buffers with a valid file path
+                        if
+                            file_path ~= ""
+                            and utils.is_child_of(M.opts.source_path, file_path)
+                        then
+                            vim.api.nvim_exec_autocmds({ "BufRead" }, {
+                                buffer = bufnr,
+                            })
+                        end
                     end
                 end
             end

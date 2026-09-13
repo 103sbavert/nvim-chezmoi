@@ -113,7 +113,7 @@ end
 ---@param file string
 ---@return ChezmoiCommandResult|nil
 function M:exec(file)
-    file = vim.fn.expand(file)
+    file = vim.fs.normalize(file)
     local result =
         require("nvim-chezmoi.chezmoi.commands.source_path"):exec({ file })
     if not result.success then
@@ -145,7 +145,7 @@ end
 ---@param callback? fun(result: ChezmoiCommandResult)
 ---@return vim.SystemObj Process handle.
 function M:async(file, callback)
-    file = vim.fn.expand(file)
+    file = vim.fs.normalize(file)
     local job = require("nvim-chezmoi.chezmoi.commands.source_path"):async(
         { file },
         function(result)

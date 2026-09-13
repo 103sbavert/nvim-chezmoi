@@ -17,8 +17,10 @@ function M:userCommands()
             callback = function(cmd)
                 local args = cmd.fargs
                 if #args > 0 then
+                    local utils = require("nvim-chezmoi.core.utils")
                     for i, value in ipairs(args) do
-                        args[i] = vim.fn.fnamemodify(vim.fn.expand(value), ":p")
+                        -- `expand` keeps `~`/env working
+                        args[i] = utils.fullpath(vim.fs.normalize(value))
                     end
                 end
                 self:exec(args)

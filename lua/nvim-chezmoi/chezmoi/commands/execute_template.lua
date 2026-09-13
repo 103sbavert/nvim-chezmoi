@@ -3,13 +3,14 @@ local chezmoi_helper = require("nvim-chezmoi.chezmoi.helper")
 local log = require("nvim-chezmoi.core.log")
 
 ---@class ChezmoiExecuteTemplate:ChezmoiCommand
+---@field opts {open_in: NvimChezmoiExecTemplateOpt, window: vim.api.keyset.win_config}
 local M = setmetatable({
     cmd = "execute-template",
 }, {
     __index = command,
 })
 
----@param opts NvimChezmoiConfig
+---@param opts NvimChezmoiConfig["execute_template"]
 function M:init(opts) self.opts = opts end
 
 ---@param bufnr integer
@@ -38,8 +39,19 @@ function M:exec(file)
         }
     end
 
-    file = vim.fn.fnamemodify(file, ":p")
-    local bufnr = vim.fn.bufnr(file, true)
+    file = require("nvim-chezmoi.core.utils").fullpath(file)
+
+    local bufnr = -1
+    for _, b in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_get_name(b) == file then
+            bufnr = b
+            break
+        end
+    end
+    if bufnr == -1 then
+        bufnr = vim.api.nvim_create_buf(true, false)
+        vim.api.nvim_buf_set_name(bufnr, file)
+    end
     local buflines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
     local result = command.exec(self, { table.concat(buflines, "\n") })
     if not result.success or #result.data == 0 then
