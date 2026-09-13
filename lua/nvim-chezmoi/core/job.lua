@@ -1,4 +1,4 @@
---- Thin `vim.system` wrapper with plenary.job-compatible result shaping.
+--- Thin `vim.system` wrapper with legacy-compatible result shaping.
 --- @class NvimChezmoi.Core.Job
 local M = {}
 
@@ -6,7 +6,7 @@ local M = {}
 M.TIMEOUT_MS = 60000
 
 --- Split process output into lines.
---- Matches plenary.job semantics: strips `\r`, splits on `\n`,
+--- Matches the old job semantics: strips `\r`, splits on `\n`,
 --- no trailing `""` when output ends with a newline.
 ---@param s string|nil
 ---@return string[]
@@ -23,7 +23,7 @@ local function split_lines(s)
 end
 
 --- Normalize stdin for `vim.system`.
---- Matches plenary.job `writer` semantics: each table item is followed
+--- Matches the old `writer` semantics: each table item is followed
 --- by `"\n"`, including a trailing newline after the last item.
 ---@param stdin string|string[]|nil
 ---@return string|nil
@@ -49,7 +49,7 @@ end
 
 --- Shape a `vim.system` completion into a `ChezmoiCommandResult`.
 --- On success `data` holds stdout lines; on failure it holds the
---- trimmed stderr lines joined with newline (plenary.job parity).
+--- trimmed stderr lines joined with newline (legacy parity).
 ---@param argv string[]
 ---@param out vim.SystemCompleted
 ---@return ChezmoiCommandResult

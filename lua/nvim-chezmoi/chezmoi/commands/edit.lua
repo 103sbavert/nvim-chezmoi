@@ -5,7 +5,7 @@ local chezmoi_execute_template =
     require("nvim-chezmoi.chezmoi.commands.execute_template")
 local chezmoi_helper = require("nvim-chezmoi.chezmoi.helper")
 local log = require("nvim-chezmoi.core.log")
-local plenary_filetype = require("plenary.filetype")
+local async = require("nvim-chezmoi.core.async")
 
 ---@class ChezmoiEdit: ChezmoiCommand
 local M = setmetatable({
@@ -98,7 +98,7 @@ function M:userCommands()
                 if #cmd.fargs > 0 then
                     file = cmd.fargs[1]
                 else
-                    file = vim.fn.expand("%:p")
+                    file = vim.api.nvim_buf_get_name(0)
                 end
                 M:exec(file)
             end,
@@ -193,9 +193,9 @@ function M:detect_filetype(buf)
 
     local source_file = vim.api.nvim_buf_get_name(buf)
 
-    if vim.fn.fnamemodify(source_file, ":e") == "tmpl" then
+    if source_file:match("%.tmpl$") then
         local filetype = vim.filetype.match({
-            filename = vim.fn.fnamemodify(source_file, ":t"),
+            filename = vim.fs.basename(source_file),
         })
 
         if filetype ~= "template" then
@@ -220,59 +220,63 @@ function M:detect_filetype(buf)
         end
     end
 
-    -- Get target path for source file
-    require("nvim-chezmoi.chezmoi.commands.target_path"):async(
-        { source_file },
-        function(target_file_result)
-            if not target_file_result.success then
-                return
-            end
+    -- Get target path for source file, then derive the filetype from it.
+    local target_path = require("nvim-chezmoi.chezmoi.commands.target_path")
+    async.run(function()
+        local target_file_result = async.await(
+            function(cb) target_path:async({ source_file }, cb) end
+        )
+        if not target_file_result.success then
+            return
+        end
 
-            local target_file = target_file_result.data[1]
+        local target_file = target_file_result.data[1]
 
-            -- Try match
-            local ft = plenary_filetype.detect(target_file, {})
-            if ft == nil or ft == "" then
-                ft = vim.filetype.match({ filename = target_file }) or ""
-            end
+        -- Try match
+        local ft = vim.filetype.match({ filename = target_file }) or ""
 
-            -- Could't find the filetype, try temp buf
-            if ft == nil or ft == "" then
-                local existing = vim.fn.bufnr(target_file)
-                if existing ~= -1 and vim.api.nvim_buf_is_valid(existing) then
-                    ft = vim.filetype.match({ buf = existing }) or ""
-                else
-                    local tmp_buf = vim.api.nvim_create_buf(true, true)
-                    vim.api.nvim_buf_set_name(tmp_buf, target_file)
-                    ft = vim.filetype.match({ buf = tmp_buf }) or ""
-                    vim.api.nvim_buf_delete(tmp_buf, { force = true })
+        -- Could't find the filetype, try temp buf
+        if ft == "" then
+            local existing = -1
+            for _, b in ipairs(vim.api.nvim_list_bufs()) do
+                if vim.api.nvim_buf_get_name(b) == target_file then
+                    existing = b
+                    break
                 end
             end
-
-            if ft ~= nil and ft ~= "" then
-                if
-                    vim.api.nvim_buf_is_valid(buf)
-                    and vim.api.nvim_buf_get_name(buf) == source_file
-                    and vim.bo[buf].filetype ~= ft
-                then
-                    vim.bo[buf].filetype = ft
-                end
-
-                vim.filetype.add({
-                    filename = {
-                        [vim.fn.fnamemodify(source_file, ":t")] = ft,
-                    },
-                })
-
-                -- Cache it
-                chezmoi_cache.new("ft_detect", { source_file }, {
-                    args = {},
-                    success = true,
-                    data = { ft = ft },
-                })
+            if existing ~= -1 and vim.api.nvim_buf_is_valid(existing) then
+                ft = vim.filetype.match({ buf = existing }) or ""
+            else
+                local tmp_buf = vim.api.nvim_create_buf(true, true)
+                vim.api.nvim_buf_set_name(tmp_buf, target_file)
+                ft = vim.filetype.match({ buf = tmp_buf }) or ""
+                vim.api.nvim_buf_delete(tmp_buf, { force = true })
             end
         end
-    )
+
+        if ft ~= "" then
+            if
+                vim.api.nvim_buf_is_valid(buf)
+                and vim.api.nvim_buf_get_name(buf) == source_file
+                and vim.bo[buf].filetype ~= ft
+            then
+                vim.bo[buf].filetype = ft
+            end
+
+            vim.filetype.add({
+                filename = {
+                    [vim.fs.basename(source_file)] = ft,
+                },
+            })
+
+            -- Cache it
+            chezmoi_cache.new("ft_detect", { source_file }, {
+                args = {},
+                success = true,
+                data = { ft = ft },
+            })
+        end
+    end)
 end
 
 return M
