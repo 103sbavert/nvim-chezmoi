@@ -51,6 +51,11 @@ local setup_plugin = function()
     chezmoi_edit:create_user_commands()
     chezmoi_apply:create_user_commands()
 
+    vim.filetype.add({
+        pattern = {
+            [".*%.tmpl"] = "gotmpl",
+        },
+    })
     vim.api.nvim_create_autocmd({ "BufNewFile", "BufRead" }, {
         group = utils.augroup("SourcePath"),
         pattern = M.opts.source_path .. "/*",
