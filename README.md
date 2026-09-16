@@ -4,9 +4,8 @@ A NeoVim plugin written in Lua that integrates with [chezmoi](https://www.chezmo
 
 ## Requirements
 
-- Neovim
+- Neovim 0.10+ (uses `vim.system`)
 - [chezmoi](https://www.chezmoi.io/)
-- [plenary.nvim](https://github.com/nvim-lua/plenary.nvim/)
 - [snacks.nvim](https://github.com/folke/snacks.nvim)
 
 ## Features
@@ -21,7 +20,7 @@ A NeoVim plugin written in Lua that integrates with [chezmoi](https://www.chezmo
 
 First, ensure that [chezmoi is in your PATH](https://www.chezmoi.io/install/).
 
-Then, install `nvim-chezmoi` with your favorite plugin manager. You'll need both [plenary](https://github.com/nvim-lua/plenary.nvim/) and [snacks.nvim](https://github.com/folke/snacks.nvim) installed too.
+Then, install `nvim-chezmoi` with your favorite plugin manager. You'll need [snacks.nvim](https://github.com/folke/snacks.nvim) installed too.
 
 ### With `lazy.nvim`
 
@@ -29,11 +28,10 @@ Then, install `nvim-chezmoi` with your favorite plugin manager. You'll need both
   return {
     "andre-kotake/nvim-chezmoi",
     dependencies = {
-      { "nvim-lua/plenary.nvim" },
       { "folke/snacks.nvim" },
     },
-    opts = { 
-      -- Your custom config 
+    opts = {
+      -- Your custom config
     },
     config = function(_, opts)
       require("nvim-chezmoi").setup(opts)
@@ -79,7 +77,7 @@ Default configuration values for `nvim-chezmoi`:
 
 - `:ChezmoiApply [file...]`: Applies changes to source files. You may specify optional `file` args to apply them only.
 - `:ChezmoiEdit [file...]`: Opens the source file from current buffer target file.You may specify optional `[file]` argument if you want to open that instead. Example: `:ChezmoiEdit ~/.bashrc`
-Encrypted files have partial supported. Tested and working fine for gpg encryption as long as you have `args: ["--quiet"]` in your [chezmoi](https://www.chezmoi.io/) configuration.
+  Encrypted files have partial supported. Tested and working fine for gpg encryption as long as you have `args: ["--quiet"]` in your [chezmoi](https://www.chezmoi.io/) configuration.
 - `:ChezmoiManaged`: List source managed files via Snacks.picker. Shows a diff preview of pending changes for each file.
 - `:ChezmoiFiles`: List special chezmoi files (`.chezmoi*`) in the source directory via Snacks.picker.
 
@@ -89,7 +87,7 @@ Encrypted files have partial supported. Tested and working fine for gpg encrypti
 - `:ChezmoiDetectFileType`: Detects the correct filetype for the opened source file. Not really much use since it does it by default whenever you open a file.
 
 ## To do
-- Eliminate plenary dependency entirely (tracked in https://github.com/103sbavert/nvim-chezmoi/issues/3)
+
 - Implement async-variants of all command modules
 - Merge features in [my Neovim config](https://github.com/103sbavert/nvim-config/tree/main/lua/config/plugins/chezmoi) built atop this plugin into the plugin directly:
   - Notifications and progress spinners
@@ -110,7 +108,6 @@ For cool alternatives:
 
 - [alker0/chezmoi.vim](https://github.com/alker0/chezmoi.vim)
 - [xvzc/chezmoi.nvim](https://github.com/xvzc/chezmoi.nvim)
-
 
 ## Contributing
 

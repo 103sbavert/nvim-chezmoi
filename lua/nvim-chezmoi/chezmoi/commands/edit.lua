@@ -5,7 +5,10 @@ local chezmoi_execute_template =
     require("nvim-chezmoi.chezmoi.commands.execute_template")
 local chezmoi_helper = require("nvim-chezmoi.chezmoi.helper")
 local log = require("nvim-chezmoi.core.log")
-local plenary_filetype = require("plenary.filetype")
+local async = require("nvim-chezmoi.core.async")
+
+---Cached contents of gotmpl_injection.scm (lazy-loaded, module-local).
+local gotmpl_injection_tpl = nil
 
 ---@class ChezmoiEdit: ChezmoiCommand
 local M = setmetatable({
@@ -58,14 +61,13 @@ function M:autoCommands(bufnr)
                     end
 
                     if self.opts.edit.apply_on_save == "confirm" then
-                        local choice = vim.fn.confirm(
-                            "Apply " .. ev.file .. "?",
-                            "&Yes\n&No",
-                            2
-                        )
-                        if choice == 1 then
-                            apply()
-                        end
+                        local choice = vim.ui.select({ "Yes", "No" }, {
+                            prompt = "Apply " .. ev.file .. "?",
+                        }, function(_, choice_idx)
+                            if choice_idx == 1 then
+                                apply()
+                            end
+                        end)
                     elseif self.opts.edit.apply_on_save == "auto" then
                         apply()
                     end
@@ -98,7 +100,7 @@ function M:userCommands()
                 if #cmd.fargs > 0 then
                     file = cmd.fargs[1]
                 else
-                    file = vim.fn.expand("%:p")
+                    file = vim.api.nvim_buf_get_name(0)
                 end
                 M:exec(file)
             end,
@@ -113,7 +115,7 @@ end
 ---@param file string
 ---@return ChezmoiCommandResult|nil
 function M:exec(file)
-    file = vim.fn.expand(file)
+    file = vim.fs.normalize(file)
     local result =
         require("nvim-chezmoi.chezmoi.commands.source_path"):exec({ file })
     if not result.success then
@@ -143,9 +145,9 @@ end
 ---with `source_path:async`, so the caller is not blocked.
 ---@param file string
 ---@param callback? fun(result: ChezmoiCommandResult)
----@return Job
+---@return vim.SystemObj Process handle.
 function M:async(file, callback)
-    file = vim.fn.expand(file)
+    file = vim.fs.normalize(file)
     local job = require("nvim-chezmoi.chezmoi.commands.source_path"):async(
         { file },
         function(result)
@@ -171,7 +173,7 @@ function M:async(file, callback)
                     callback(decrypt_result)
                 end
             else
-                vim.cmd.edit(file)
+                vim.cmd.tabedit(file)
                 if type(callback) == "function" then
                     callback({ args = {}, success = true, data = {} })
                 end
@@ -182,30 +184,175 @@ function M:async(file, callback)
     return job
 end
 
+---Reads gotmpl_injection.scm once and caches it.
+---@return string?
+local function get_gotmpl_injection_tpl()
+    if gotmpl_injection_tpl then
+        return gotmpl_injection_tpl
+    end
+
+    local path = vim.api.nvim_get_runtime_file("gotmpl_injection.scm", false)[1]
+    if not path then
+        log.warn(
+            "gotmpl_injection.scm not found on runtimepath, treesitter attach skipped for buffer"
+        )
+        return nil
+    end
+
+    gotmpl_injection_tpl = table.concat(vim.fn.readfile(path), "\n")
+    return gotmpl_injection_tpl
+end
+
+---@param buf integer
+---@param target_ft string
+function M:attach_gotmpl_ts(buf, target_ft)
+    if not vim.api.nvim_buf_is_valid(buf) then
+        log.debug(
+            "gotmpl treesitter attach skipped: buffer "
+                .. tostring(buf)
+                .. " is no longer valid"
+        )
+        return
+    end
+
+    if target_ft == "" or target_ft == "gotmpl" then
+        log.debug(
+            "gotmpl treesitter attach skipped for buffer "
+                .. buf
+                .. ": no distinct target filetype to inject (target_ft="
+                .. tostring(target_ft)
+                .. ")"
+        )
+        return
+    end
+
+    if not vim.treesitter.language.add("gotmpl") then
+        log.warn(
+            "gotmpl treesitter parser is not installed; cannot attach dual"
+                .. " gotmpl/"
+                .. target_ft
+                .. " highlighting for buffer "
+                .. buf
+        )
+        return
+    end
+
+    if not pcall(vim.treesitter.language.add, target_ft) then
+        log.debug(
+            "no treesitter parser installed for target filetype '"
+                .. target_ft
+                .. "'; attaching gotmpl-only highlighting for buffer "
+                .. buf
+        )
+        vim.treesitter.start(buf, "gotmpl")
+        return
+    end
+
+    local tpl = get_gotmpl_injection_tpl()
+    if not tpl then
+        return
+    end
+    local injections = string.format(tpl, target_ft)
+
+    local ok, parser, err = pcall(vim.treesitter.get_parser, buf, "gotmpl", {
+        injections = { gotmpl = injections },
+    })
+    if not ok or not parser then
+        log.warn(
+            "failed to create combined gotmpl/"
+                .. target_ft
+                .. " parser for buffer "
+                .. buf
+                .. ": "
+                .. tostring(err)
+        )
+        return
+    end
+
+    vim.treesitter.highlighter.new(parser)
+    log.debug(
+        "attached gotmpl treesitter parser to buffer "
+            .. buf
+            .. " with '"
+            .. target_ft
+            .. "' injected (combined) into (text) regions"
+    )
+end
+
 ---Detects and sets filetype for `buf` using the target path.
 ---@param buf integer
 function M:detect_filetype(buf)
     local set_filetype = vim.schedule_wrap(function(ft)
-        if vim.bo[buf].filetype ~= ft then
-            vim.bo[buf].filetype = ft
+        local compound_ft = ft .. ".gotmpl"
+        if vim.bo[buf].filetype ~= compound_ft then
+            log.debug(
+                "setting filetype of buffer "
+                    .. buf
+                    .. " to '"
+                    .. compound_ft
+                    .. "' (was '"
+                    .. vim.bo[buf].filetype
+                    .. "')"
+            )
+            vim.bo[buf].filetype = compound_ft
+        else
+            log.debug(
+                "buffer "
+                    .. buf
+                    .. " filetype already '"
+                    .. tostring(vim.bo[buf].filetype)
+                    .. "'; not reassigning, still (re)attaching treesitter"
+            )
         end
+        self:attach_gotmpl_ts(buf, ft)
     end)
 
     local source_file = vim.api.nvim_buf_get_name(buf)
+    log.debug(
+        "detect_filetype: starting detection for buffer "
+            .. buf
+            .. " (source file '"
+            .. source_file
+            .. "')"
+    )
 
-    if vim.fn.fnamemodify(source_file, ":e") == "tmpl" then
+    if source_file:match("%.tmpl$") then
         local filetype = vim.filetype.match({
-            filename = vim.fn.fnamemodify(source_file, ":t"),
+            filename = vim.fs.basename(source_file),
         })
 
-        if filetype ~= "template" then
+        if filetype ~= "gotmpl" then
+            log.debug(
+                "filename-based match on '"
+                    .. vim.fs.basename(source_file)
+                    .. "' resolved filetype '"
+                    .. tostring(filetype)
+                    .. "'; using it directly"
+            )
             set_filetype(filetype)
             return
         end
+
+        log.debug(
+            "filename-based match on '"
+                .. vim.fs.basename(source_file)
+                .. "' resolved to 'gotmpl'; falling back to target-path"
+                .. " based detection to find the underlying filetype"
+        )
     end
 
     local ok, s = pcall(vim.api.nvim_buf_get_var, buf, "encrypted_source_path")
     if ok then
+        log.debug(
+            "buffer "
+                .. buf
+                .. " is a decrypted scratch buffer; using its"
+                .. " encrypted_source_path '"
+                .. s
+                .. "' for filetype detection instead of '"
+                .. source_file
+                .. "'"
+        )
         source_file = s
     end
 
@@ -215,64 +362,153 @@ function M:detect_filetype(buf)
     if cached ~= nil then
         local ft = cached.result.data.ft
         if ft ~= vim.bo[buf].filetype then
+            log.debug(
+                "ft_detect cache hit for '"
+                    .. source_file
+                    .. "': filetype '"
+                    .. tostring(ft)
+                    .. "'"
+            )
             set_filetype(ft)
             return
         end
+
+        log.debug(
+            "ft_detect cache hit for '"
+                .. source_file
+                .. "' matches current buffer filetype '"
+                .. tostring(vim.bo[buf].filetype)
+                .. "'; skipping redundant set_filetype"
+        )
+    else
+        log.debug(
+            "no ft_detect cache entry for '"
+                .. source_file
+                .. "'; resolving target path to derive filetype"
+        )
     end
 
-    -- Get target path for source file
-    require("nvim-chezmoi.chezmoi.commands.target_path"):async(
-        { source_file },
-        function(target_file_result)
-            if not target_file_result.success then
-                return
-            end
+    -- Get target path for source file, then derive the filetype from it.
+    local target_path = require("nvim-chezmoi.chezmoi.commands.target_path")
+    async.run(function()
+        local target_file_result = async.await(
+            function(cb) target_path:async({ source_file }, cb) end
+        )
+        if not target_file_result.success then
+            log.warn(
+                "could not resolve target path for source file '"
+                    .. source_file
+                    .. "'; skipping filetype detection"
+            )
+            return
+        end
 
-            local target_file = target_file_result.data[1]
+        local target_file = target_file_result.data[1]
+        log.debug(
+            "resolved target path '"
+                .. target_file
+                .. "' for source file '"
+                .. source_file
+                .. "'"
+        )
 
-            -- Try match
-            local ft = plenary_filetype.detect(target_file, {})
-            if ft == nil or ft == "" then
-                ft = vim.filetype.match({ filename = target_file }) or ""
-            end
+        -- Try match
+        local ft = vim.filetype.match({ filename = target_file }) or ""
 
-            -- Could't find the filetype, try temp buf
-            if ft == nil or ft == "" then
-                local existing = vim.fn.bufnr(target_file)
-                if existing ~= -1 and vim.api.nvim_buf_is_valid(existing) then
-                    ft = vim.filetype.match({ buf = existing }) or ""
-                else
-                    local tmp_buf = vim.api.nvim_create_buf(true, true)
-                    vim.api.nvim_buf_set_name(tmp_buf, target_file)
-                    ft = vim.filetype.match({ buf = tmp_buf }) or ""
-                    vim.api.nvim_buf_delete(tmp_buf, { force = true })
+        -- Could't find the filetype, try temp buf
+        if ft == "" then
+            log.debug(
+                "filename-based match on target path '"
+                    .. target_file
+                    .. "' found nothing; probing loaded buffers for a"
+                    .. " match"
+            )
+
+            local existing = -1
+            for _, b in ipairs(vim.api.nvim_list_bufs()) do
+                if vim.api.nvim_buf_get_name(b) == target_file then
+                    existing = b
+                    break
                 end
             end
-
-            if ft ~= nil and ft ~= "" then
-                if
-                    vim.api.nvim_buf_is_valid(buf)
-                    and vim.api.nvim_buf_get_name(buf) == source_file
-                    and vim.bo[buf].filetype ~= ft
-                then
-                    vim.bo[buf].filetype = ft
-                end
-
-                vim.filetype.add({
-                    filename = {
-                        [vim.fn.fnamemodify(source_file, ":t")] = ft,
-                    },
-                })
-
-                -- Cache it
-                chezmoi_cache.new("ft_detect", { source_file }, {
-                    args = {},
-                    success = true,
-                    data = { ft = ft },
-                })
+            if existing ~= -1 and vim.api.nvim_buf_is_valid(existing) then
+                log.debug(
+                    "found existing buffer "
+                        .. existing
+                        .. " for target path '"
+                        .. target_file
+                        .. "'; matching filetype from its contents"
+                )
+                ft = vim.filetype.match({ buf = existing }) or ""
+            else
+                log.debug(
+                    "no existing buffer for target path '"
+                        .. target_file
+                        .. "'; matching filetype using a scratch buffer"
+                )
+                local tmp_buf = vim.api.nvim_create_buf(true, true)
+                vim.api.nvim_buf_set_name(tmp_buf, target_file)
+                ft = vim.filetype.match({ buf = tmp_buf }) or ""
+                vim.api.nvim_buf_delete(tmp_buf, { force = true })
             end
         end
-    )
+
+        if ft ~= "" then
+            if
+                vim.api.nvim_buf_is_valid(buf)
+                and vim.api.nvim_buf_get_name(buf) == source_file
+                and vim.bo[buf].filetype ~= ft
+            then
+                log.debug(
+                    "target-path based detection resolved filetype '"
+                        .. ft
+                        .. "' for source file '"
+                        .. source_file
+                        .. "'"
+                )
+                set_filetype(ft)
+            else
+                log.debug(
+                    "target-path based detection resolved filetype '"
+                        .. ft
+                        .. "' for '"
+                        .. source_file
+                        .. "', but buffer "
+                        .. buf
+                        .. " no longer matches (renamed/closed) or already"
+                        .. " has that filetype; not reassigning"
+                )
+            end
+
+            vim.filetype.add({
+                filename = {
+                    [vim.fs.basename(source_file)] = ft,
+                },
+            })
+
+            -- Cache it
+            chezmoi_cache.new("ft_detect", { source_file }, {
+                args = {},
+                success = true,
+                data = { ft = ft },
+            })
+            log.debug(
+                "cached ft_detect result '"
+                    .. ft
+                    .. "' for source file '"
+                    .. source_file
+                    .. "'"
+            )
+        else
+            log.warn(
+                "could not determine filetype for target file '"
+                    .. target_file
+                    .. "' (source file '"
+                    .. source_file
+                    .. "')"
+            )
+        end
+    end)
 end
 
 return M

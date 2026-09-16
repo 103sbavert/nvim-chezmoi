@@ -1,8 +1,8 @@
 --- A simple logging class that uses vim.notify for logging messages.
 --- @class NvimChezmoi.Core.Log
---- @field print_debug boolean If `true`, enables printing debug messages.
+--- @field show_debug_logs fun(): boolean If `true`, enables printing debug messages.
 local T = {
-    print_debug = false,
+    show_debug_logs = function() return require("nvim-chezmoi").opts.debug end,
 }
 
 local notify = function(message, level)
@@ -22,8 +22,10 @@ end
 function T.info(message) notify(message, vim.log.levels.INFO) end
 
 function T.debug(message)
-    local logLevel = T.print_debug and vim.log.levels.INFO
-        or vim.log.levels.DEBUG
+    if not T.show_debug_logs() then
+        return
+    end
+    local logLevel = vim.log.levels.DEBUG
     notify(message, logLevel)
 end
 

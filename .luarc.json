@@ -7,8 +7,7 @@
     "library": [
       "/usr/share/nvim/runtime/lua",
       "${3rd}/luv/library",
-      "${env:HOME}/.local/share/nvim/lazy/snacks.nvim/lua",
-      "${env:HOME}/.local/share/nvim/lazy/plenary.nvim/lua"
+      "${env:HOME}/.local/share/nvim/lazy/snacks.nvim/lua"
     ],
     "checkThirdParty": false
   },
