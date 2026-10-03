@@ -203,6 +203,13 @@ local function get_gotmpl_injection_tpl()
     return gotmpl_injection_tpl
 end
 
+local function is_template_ft(ft, filename)
+    if filename and filename ~= "" and not filename:match("%.tmpl$") then
+        return false
+    end
+    return ft == "template" or ft == "gotmpl" or ft == "tmpl"
+end
+
 ---@param buf integer
 ---@param target_ft string
 function M:attach_gotmpl_ts(buf, target_ft)
@@ -279,12 +286,25 @@ function M:attach_gotmpl_ts(buf, target_ft)
     )
 end
 
----Detects and sets filetype for `buf` using the target path.
+---Detects and sets filetype for `buf` using various heuristics
 ---@param buf integer
 function M:detect_filetype(buf)
-    local set_filetype = vim.schedule_wrap(function(ft)
-        local compound_ft = ft .. ".gotmpl"
-        if vim.bo[buf].filetype ~= compound_ft then
+    local source_file = vim.api.nvim_buf_get_name(buf)
+
+    log.debug(
+        "detect_filetype: starting detection for buffer "
+            .. buf
+            .. " (source file '"
+            .. source_file
+            .. "')"
+    )
+
+    local is_tmpl_ext = source_file:match("%.tmpl$")
+
+    local set_file_type = vim.schedule_wrap(function(ft)
+        if is_tmpl_ext then
+            local compound_ft = (ft and ft ~= "" and ft .. "." or "")
+                .. "gotmpl"
             log.debug(
                 "setting filetype of buffer "
                     .. buf
@@ -294,51 +314,46 @@ function M:detect_filetype(buf)
                     .. vim.bo[buf].filetype
                     .. "')"
             )
-            vim.bo[buf].filetype = compound_ft
-        else
-            log.debug(
-                "buffer "
-                    .. buf
-                    .. " filetype already '"
-                    .. tostring(vim.bo[buf].filetype)
-                    .. "'; not reassigning, still (re)attaching treesitter"
-            )
-        end
-        self:attach_gotmpl_ts(buf, ft)
-    end)
 
-    local source_file = vim.api.nvim_buf_get_name(buf)
-    log.debug(
-        "detect_filetype: starting detection for buffer "
-            .. buf
-            .. " (source file '"
-            .. source_file
-            .. "')"
-    )
+            if vim.bo[buf].filetype ~= compound_ft then
+                vim.bo[buf].filetype = compound_ft
+            end
+            self:attach_gotmpl_ts(buf, ft)
 
-    if source_file:match("%.tmpl$") then
-        local filetype = vim.filetype.match({
-            filename = vim.fs.basename(source_file),
-        })
-
-        if filetype ~= "gotmpl" then
-            log.debug(
-                "filename-based match on '"
-                    .. vim.fs.basename(source_file)
-                    .. "' resolved filetype '"
-                    .. tostring(filetype)
-                    .. "'; using it directly"
-            )
-            set_filetype(filetype)
             return
         end
 
+        if vim.bo[buf].filetype ~= ft then
+            log.debug(
+                "setting filetype of buffer "
+                    .. buf
+                    .. " to '"
+                    .. ft
+                    .. "' (was '"
+                    .. vim.bo[buf].filetype
+                    .. "')"
+            )
+
+            vim.bo[buf].filetype = ft
+        end
+
+        self:attach_gotmpl_ts(buf, ft)
+    end)
+
+    if
+        not is_tmpl_ext
+        and vim.bo[buf].filetype ~= ""
+        and not is_template_ft(vim.bo[buf].filetype)
+    then
         log.debug(
-            "filename-based match on '"
+            "Non-template source file '"
                 .. vim.fs.basename(source_file)
-                .. "' resolved to 'gotmpl'; falling back to target-path"
-                .. " based detection to find the underlying filetype"
+                .. "' already has a filetype '"
+                .. vim.bo[buf].filetype
+                .. "'; using it directly"
         )
+
+        return
     end
 
     local ok, s = pcall(vim.api.nvim_buf_get_var, buf, "encrypted_source_path")
@@ -369,7 +384,7 @@ function M:detect_filetype(buf)
                     .. tostring(ft)
                     .. "'"
             )
-            set_filetype(ft)
+            set_file_type(ft)
             return
         end
 
@@ -378,7 +393,7 @@ function M:detect_filetype(buf)
                 .. source_file
                 .. "' matches current buffer filetype '"
                 .. tostring(vim.bo[buf].filetype)
-                .. "'; skipping redundant set_filetype"
+                .. "'; skipping redundant set_file_type"
         )
     else
         log.debug(
@@ -466,7 +481,7 @@ function M:detect_filetype(buf)
                         .. source_file
                         .. "'"
                 )
-                set_filetype(ft)
+                set_file_type(ft)
             else
                 log.debug(
                     "target-path based detection resolved filetype '"
