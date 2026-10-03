@@ -7,7 +7,18 @@ local chezmoi_helper = require("nvim-chezmoi.chezmoi.helper")
 local log = require("nvim-chezmoi.core.log")
 local async = require("nvim-chezmoi.core.async")
 
----Cached contents of template_injection.scm (lazy-loaded, module-local).
+-- Noticed different behavior with different sets of template file types, so it's worth having one global toggle while we figure this out
+local all_template_types = {
+    "gotmpl",
+    "template",
+    "tmpl",
+    "tpl",
+}
+
+local TEMPLATE_TYPE = "gotmpl"
+local SCM_FILE_NAME = "gotmpl_injection.scm"
+
+---Cached contents of scm (lazy-loaded, module-local).
 local template_injection_scm = nil
 
 ---@class ChezmoiEdit: ChezmoiCommand
@@ -184,18 +195,18 @@ function M:async(file, callback)
     return job
 end
 
----Reads template_injection.scm once and caches it.
+---Reads scm once and caches it.
 ---@return string?
 local function get_template_injection_scm()
     if template_injection_scm then
         return template_injection_scm
     end
 
-    local path =
-        vim.api.nvim_get_runtime_file("template_injection.scm", false)[1]
+    local path = vim.api.nvim_get_runtime_file(SCM_FILE_NAME, false)[1]
     if not path then
         log.warn(
-            "template_injection.scm not found on runtimepath, treesitter attach skipped for buffer"
+            SCM_FILE_NAME
+                .. " not found on runtimepath, treesitter attach skipped for buffer"
         )
         return nil
     end
@@ -204,11 +215,22 @@ local function get_template_injection_scm()
     return template_injection_scm
 end
 
-local function is_template_ft(ft, filename)
-    if filename and filename ~= "" and not filename:match("%.tmpl$") then
+local function is_file_template(ft, filename)
+    if filename and filename ~= "" and filename:match("%.tmpl$") then
+        return true
+    end
+
+    if ft == "" then
         return false
     end
-    return ft == "template" or ft == "gotmpl" or ft == "tmpl"
+
+    for _, template_ft in ipairs(all_template_types) do
+        if template_ft == ft then
+            return true
+        end
+    end
+
+    return false
 end
 
 ---@param buf integer
@@ -216,7 +238,8 @@ end
 function M:attach_template_ts(buf, target_ft)
     if not vim.api.nvim_buf_is_valid(buf) then
         log.debug(
-            "template treesitter attach skipped: buffer "
+            TEMPLATE_TYPE
+                .. " treesitter attach skipped: buffer "
                 .. tostring(buf)
                 .. " is no longer valid"
         )
@@ -225,7 +248,8 @@ function M:attach_template_ts(buf, target_ft)
 
     if not target_ft or target_ft == "" then
         log.debug(
-            "template treesitter attach skipped for buffer "
+            TEMPLATE_TYPE
+                .. " treesitter attach skipped for buffer "
                 .. buf
                 .. ": no distinct target filetype to inject (target_ft="
                 .. tostring(target_ft)
@@ -234,12 +258,14 @@ function M:attach_template_ts(buf, target_ft)
         return
     end
 
-    if not vim.treesitter.language.add("template") then
+    local combined_ft = string.format("%s.%s", target_ft, TEMPLATE_TYPE)
+
+    if not vim.treesitter.language.add(TEMPLATE_TYPE) then
         log.warn(
-            "template treesitter parser is not installed; cannot attach dual"
-                .. " template/"
-                .. target_ft
-                .. " highlighting for buffer "
+            TEMPLATE_TYPE
+                .. " treesitter parser is not installed; cannot attach dual '"
+                .. combined_ft
+                .. "' highlighting for buffer "
                 .. buf
         )
         return
@@ -252,25 +278,27 @@ function M:attach_template_ts(buf, target_ft)
                 .. "'; attaching template-only highlighting for buffer "
                 .. buf
         )
-        vim.treesitter.start(buf, "template")
+
+        vim.treesitter.start(buf, TEMPLATE_TYPE)
         return
     end
 
-    local tpl = get_template_injection_scm()
-    if not tpl then
+    local template_scm = get_template_injection_scm()
+    if not template_scm then
         return
     end
-    local injections = string.format(tpl, target_ft)
+    local injections = string.format(template_scm, target_ft)
 
-    local ok, parser, err = pcall(vim.treesitter.get_parser, buf, "template", {
-        injections = { template = injections },
-    })
+    local ok, parser, err =
+        pcall(vim.treesitter.get_parser, buf, TEMPLATE_TYPE, {
+            injections = { [TEMPLATE_TYPE] = injections },
+        })
 
     if not ok or not parser then
         log.warn(
-            "failed to create combined template/"
-                .. target_ft
-                .. " parser for buffer "
+            "failed to create combined '"
+                .. combined_ft
+                .. "' parser for buffer "
                 .. buf
                 .. ": "
                 .. tostring(err)
@@ -281,7 +309,8 @@ function M:attach_template_ts(buf, target_ft)
     vim.treesitter.highlighter.new(parser)
 
     log.debug(
-        "attached template treesitter parser to buffer "
+        TEMPLATE_TYPE
+            .. "treesitter parser attached to buffer "
             .. buf
             .. " with '"
             .. target_ft
@@ -380,12 +409,12 @@ function M:detect_filetype(buf)
             .. "')"
     )
 
-    local is_tmpl_ext = source_file:match("%.tmpl$")
+    local is_tmpl = is_file_template(vim.bo[buf].filetype)
 
     local set_file_type = vim.schedule_wrap(function(ft)
-        if is_tmpl_ext then
+        if is_tmpl then
             local compound_ft = (ft and ft ~= "" and ft .. "." or "")
-                .. "template"
+                .. TEMPLATE_TYPE
             log.debug(
                 "setting filetype of buffer "
                     .. buf
@@ -399,6 +428,7 @@ function M:detect_filetype(buf)
             if vim.bo[buf].filetype ~= compound_ft then
                 vim.bo[buf].filetype = compound_ft
             end
+
             self:attach_template_ts(buf, ft)
 
             return
@@ -417,15 +447,10 @@ function M:detect_filetype(buf)
 
             vim.bo[buf].filetype = ft
         end
-
-        self:attach_template_ts(buf, ft)
     end)
 
-    if
-        not is_tmpl_ext
-        and vim.bo[buf].filetype ~= ""
-        and not is_template_ft(vim.bo[buf].filetype)
-    then
+    -- if not a template but has a non-empty file type
+    if not (is_tmpl or (vim.bo[buf].filetype or "") == "") then
         log.debug(
             "Non-template source file '"
                 .. vim.fs.basename(source_file)
@@ -454,6 +479,7 @@ function M:detect_filetype(buf)
 
     -- Try cache first
     local cached = chezmoi_cache.find_success("ft_detect", { source_file })
+
     -- if cache exists, get the ft
     local ft = cached and cached.result.data.ft
         or log.debug(
