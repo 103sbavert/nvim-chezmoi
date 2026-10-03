@@ -53,7 +53,7 @@ local setup_plugin = function()
 
     vim.filetype.add({
         pattern = {
-            [".*%.tmpl"] = "template",
+            [".*%.tmpl"] = "gotmpl",
         },
     })
     vim.api.nvim_create_autocmd({ "BufNewFile", "BufRead" }, {
