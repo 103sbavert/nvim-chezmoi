@@ -7,8 +7,8 @@ local chezmoi_helper = require("nvim-chezmoi.chezmoi.helper")
 local log = require("nvim-chezmoi.core.log")
 local async = require("nvim-chezmoi.core.async")
 
----Cached contents of gotmpl_injection.scm (lazy-loaded, module-local).
-local gotmpl_injection_tpl = nil
+---Cached contents of template_injection.scm (lazy-loaded, module-local).
+local template_injection_scm = nil
 
 ---@class ChezmoiEdit: ChezmoiCommand
 local M = setmetatable({
@@ -184,23 +184,24 @@ function M:async(file, callback)
     return job
 end
 
----Reads gotmpl_injection.scm once and caches it.
+---Reads template_injection.scm once and caches it.
 ---@return string?
-local function get_gotmpl_injection_tpl()
-    if gotmpl_injection_tpl then
-        return gotmpl_injection_tpl
+local function get_template_injection_scm()
+    if template_injection_scm then
+        return template_injection_scm
     end
 
-    local path = vim.api.nvim_get_runtime_file("gotmpl_injection.scm", false)[1]
+    local path =
+        vim.api.nvim_get_runtime_file("template_injection.scm", false)[1]
     if not path then
         log.warn(
-            "gotmpl_injection.scm not found on runtimepath, treesitter attach skipped for buffer"
+            "template_injection.scm not found on runtimepath, treesitter attach skipped for buffer"
         )
         return nil
     end
 
-    gotmpl_injection_tpl = table.concat(vim.fn.readfile(path), "\n")
-    return gotmpl_injection_tpl
+    template_injection_scm = table.concat(vim.fn.readfile(path), "\n")
+    return template_injection_scm
 end
 
 local function is_template_ft(ft, filename)
@@ -212,19 +213,19 @@ end
 
 ---@param buf integer
 ---@param target_ft string
-function M:attach_gotmpl_ts(buf, target_ft)
+function M:attach_template_ts(buf, target_ft)
     if not vim.api.nvim_buf_is_valid(buf) then
         log.debug(
-            "gotmpl treesitter attach skipped: buffer "
+            "template treesitter attach skipped: buffer "
                 .. tostring(buf)
                 .. " is no longer valid"
         )
         return
     end
 
-    if target_ft == "" or target_ft == "gotmpl" then
+    if not target_ft or target_ft == "" then
         log.debug(
-            "gotmpl treesitter attach skipped for buffer "
+            "template treesitter attach skipped for buffer "
                 .. buf
                 .. ": no distinct target filetype to inject (target_ft="
                 .. tostring(target_ft)
@@ -233,10 +234,10 @@ function M:attach_gotmpl_ts(buf, target_ft)
         return
     end
 
-    if not vim.treesitter.language.add("gotmpl") then
+    if not vim.treesitter.language.add("template") then
         log.warn(
-            "gotmpl treesitter parser is not installed; cannot attach dual"
-                .. " gotmpl/"
+            "template treesitter parser is not installed; cannot attach dual"
+                .. " template/"
                 .. target_ft
                 .. " highlighting for buffer "
                 .. buf
@@ -248,25 +249,25 @@ function M:attach_gotmpl_ts(buf, target_ft)
         log.debug(
             "no treesitter parser installed for target filetype '"
                 .. target_ft
-                .. "'; attaching gotmpl-only highlighting for buffer "
+                .. "'; attaching template-only highlighting for buffer "
                 .. buf
         )
-        vim.treesitter.start(buf, "gotmpl")
+        vim.treesitter.start(buf, "template")
         return
     end
 
-    local tpl = get_gotmpl_injection_tpl()
+    local tpl = get_template_injection_scm()
     if not tpl then
         return
     end
     local injections = string.format(tpl, target_ft)
 
-    local ok, parser, err = pcall(vim.treesitter.get_parser, buf, "gotmpl", {
-        injections = { gotmpl = injections },
+    local ok, parser, err = pcall(vim.treesitter.get_parser, buf, "template", {
+        injections = { template = injections },
     })
     if not ok or not parser then
         log.warn(
-            "failed to create combined gotmpl/"
+            "failed to create combined template/"
                 .. target_ft
                 .. " parser for buffer "
                 .. buf
@@ -278,7 +279,7 @@ function M:attach_gotmpl_ts(buf, target_ft)
 
     vim.treesitter.highlighter.new(parser)
     log.debug(
-        "attached gotmpl treesitter parser to buffer "
+        "attached template treesitter parser to buffer "
             .. buf
             .. " with '"
             .. target_ft
@@ -304,7 +305,7 @@ function M:detect_filetype(buf)
     local set_file_type = vim.schedule_wrap(function(ft)
         if is_tmpl_ext then
             local compound_ft = (ft and ft ~= "" and ft .. "." or "")
-                .. "gotmpl"
+                .. "template"
             log.debug(
                 "setting filetype of buffer "
                     .. buf
@@ -318,7 +319,7 @@ function M:detect_filetype(buf)
             if vim.bo[buf].filetype ~= compound_ft then
                 vim.bo[buf].filetype = compound_ft
             end
-            self:attach_gotmpl_ts(buf, ft)
+            self:attach_template_ts(buf, ft)
 
             return
         end
@@ -337,7 +338,7 @@ function M:detect_filetype(buf)
             vim.bo[buf].filetype = ft
         end
 
-        self:attach_gotmpl_ts(buf, ft)
+        self:attach_template_ts(buf, ft)
     end)
 
     if
