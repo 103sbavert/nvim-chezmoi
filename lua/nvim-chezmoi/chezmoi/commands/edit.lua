@@ -265,6 +265,7 @@ function M:attach_template_ts(buf, target_ft)
     local ok, parser, err = pcall(vim.treesitter.get_parser, buf, "template", {
         injections = { template = injections },
     })
+
     if not ok or not parser then
         log.warn(
             "failed to create combined template/"
@@ -278,6 +279,7 @@ function M:attach_template_ts(buf, target_ft)
     end
 
     vim.treesitter.highlighter.new(parser)
+
     log.debug(
         "attached template treesitter parser to buffer "
             .. buf
@@ -285,6 +287,84 @@ function M:attach_template_ts(buf, target_ft)
             .. target_ft
             .. "' injected (combined) into (text) regions"
     )
+end
+
+local function get_computed_filetype(file)
+    -- First, just check the file name
+    local ft = vim.filetype.match({ filename = file })
+    local hasnoft = function() return (not ft or ft == "") end -- says: "We still have no ft, we must keep checking"
+
+    -- Could't find the filetype, try harder. Check if a buffer already has the
+    -- file.
+    -- This path is highly likely if the user used the plugin's ChezmoiEdit command to
+    -- invoke open the currently open source file.
+    if hasnoft() then
+        log.debug(
+            "filename-based match on path '"
+                .. file
+                .. "' found nothing; probing loaded buffers for a match"
+        )
+
+        local existing = -1
+        for _, b in ipairs(vim.api.nvim_list_bufs()) do
+            if vim.api.nvim_buf_get_name(b) == file then
+                existing = b
+                break
+            end
+        end
+
+        if existing ~= -1 and vim.api.nvim_buf_is_valid(existing) then
+            log.debug(
+                "found existing buffer "
+                    .. existing
+                    .. " for path '"
+                    .. file
+                    .. "'; matching filetype from its contents"
+            )
+
+            ft = vim.filetype.match({ buf = existing }) or ""
+        end
+    end
+
+    -- The file type is still not determined, need to try more
+    if hasnoft() then
+        log.debug(
+            "no existing buffer for path '"
+                .. file
+                .. "'; detecting type from contents"
+        )
+
+        local contents = {}
+        local h = io.open(file, "r")
+        if h then
+            for _ = 1, 2 do
+                local l = h:read("*l")
+                if not l then
+                    break
+                end
+                contents[#contents + 1] = l
+            end
+            h:close()
+        end
+
+        ft = vim.filetype.match({ filename = file, contents = contents }) or ""
+    end
+
+    if hasnoft() then
+        log.debug(
+            "checking file contents alone did not work '"
+                .. file
+                .. "'; detecting by loading the file in as a buffer"
+        )
+
+        local tmp_buf = vim.api.nvim_create_buf(true, true)
+
+        vim.api.nvim_buf_set_name(tmp_buf, file)
+        ft = vim.filetype.match({ buf = tmp_buf }) or ""
+        vim.api.nvim_buf_delete(tmp_buf, { force = true })
+    end
+
+    return ft
 end
 
 ---Detects and sets filetype for `buf` using various heuristics
@@ -374,52 +454,47 @@ function M:detect_filetype(buf)
 
     -- Try cache first
     local cached = chezmoi_cache.find_success("ft_detect", { source_file })
+    -- if cache exists, get the ft
+    local ft = cached and cached.result.data.ft
+        or log.debug(
+            "no ft_detect cache entry for '"
+                .. source_file
+                .. "'; resolving target path to derive filetype",
+            false
+        )
 
-    if cached ~= nil then
-        local ft = cached.result.data.ft
-        if ft ~= vim.bo[buf].filetype then
-            log.debug(
-                "ft_detect cache hit for '"
-                    .. source_file
-                    .. "': filetype '"
-                    .. tostring(ft)
-                    .. "'"
-            )
-            set_file_type(ft)
-            return
-        end
-
+    if ft then
         log.debug(
             "ft_detect cache hit for '"
                 .. source_file
-                .. "' matches current buffer filetype '"
-                .. tostring(vim.bo[buf].filetype)
-                .. "'; skipping redundant set_file_type"
+                .. "': filetype '"
+                .. tostring(ft)
+                .. "'"
         )
-    else
-        log.debug(
-            "no ft_detect cache entry for '"
-                .. source_file
-                .. "'; resolving target path to derive filetype"
-        )
+        set_file_type(ft)
+        return
     end
 
     -- Get target path for source file, then derive the filetype from it.
     local target_path = require("nvim-chezmoi.chezmoi.commands.target_path")
+
     async.run(function()
         local target_file_result = async.await(
             function(cb) target_path:async({ source_file }, cb) end
         )
+
         if not target_file_result.success then
             log.warn(
                 "could not resolve target path for source file '"
                     .. source_file
                     .. "'; skipping filetype detection"
             )
+
             return
         end
 
         local target_file = target_file_result.data[1]
+
         log.debug(
             "resolved target path '"
                 .. target_file
@@ -428,94 +503,8 @@ function M:detect_filetype(buf)
                 .. "'"
         )
 
-        -- Try match
-        local ft = vim.filetype.match({ filename = target_file }) or ""
-
-        -- Could't find the filetype, try temp buf
-        if ft == "" then
-            log.debug(
-                "filename-based match on target path '"
-                    .. target_file
-                    .. "' found nothing; probing loaded buffers for a"
-                    .. " match"
-            )
-
-            local existing = -1
-            for _, b in ipairs(vim.api.nvim_list_bufs()) do
-                if vim.api.nvim_buf_get_name(b) == target_file then
-                    existing = b
-                    break
-                end
-            end
-            if existing ~= -1 and vim.api.nvim_buf_is_valid(existing) then
-                log.debug(
-                    "found existing buffer "
-                        .. existing
-                        .. " for target path '"
-                        .. target_file
-                        .. "'; matching filetype from its contents"
-                )
-                ft = vim.filetype.match({ buf = existing }) or ""
-            else
-                log.debug(
-                    "no existing buffer for target path '"
-                        .. target_file
-                        .. "'; matching filetype using a scratch buffer"
-                )
-                local tmp_buf = vim.api.nvim_create_buf(true, true)
-                vim.api.nvim_buf_set_name(tmp_buf, target_file)
-                ft = vim.filetype.match({ buf = tmp_buf }) or ""
-                vim.api.nvim_buf_delete(tmp_buf, { force = true })
-            end
-        end
-
-        if ft ~= "" then
-            if
-                vim.api.nvim_buf_is_valid(buf)
-                and vim.api.nvim_buf_get_name(buf) == source_file
-                and vim.bo[buf].filetype ~= ft
-            then
-                log.debug(
-                    "target-path based detection resolved filetype '"
-                        .. ft
-                        .. "' for source file '"
-                        .. source_file
-                        .. "'"
-                )
-                set_file_type(ft)
-            else
-                log.debug(
-                    "target-path based detection resolved filetype '"
-                        .. ft
-                        .. "' for '"
-                        .. source_file
-                        .. "', but buffer "
-                        .. buf
-                        .. " no longer matches (renamed/closed) or already"
-                        .. " has that filetype; not reassigning"
-                )
-            end
-
-            vim.filetype.add({
-                filename = {
-                    [vim.fs.basename(source_file)] = ft,
-                },
-            })
-
-            -- Cache it
-            chezmoi_cache.new("ft_detect", { source_file }, {
-                args = {},
-                success = true,
-                data = { ft = ft },
-            })
-            log.debug(
-                "cached ft_detect result '"
-                    .. ft
-                    .. "' for source file '"
-                    .. source_file
-                    .. "'"
-            )
-        else
+        local tgt_ft = get_computed_filetype(target_file)
+        if not tgt_ft or tgt_ft == "" then
             log.warn(
                 "could not determine filetype for target file '"
                     .. target_file
@@ -523,7 +512,57 @@ function M:detect_filetype(buf)
                     .. source_file
                     .. "')"
             )
+            return
         end
+
+        if
+            not (
+                vim.api.nvim_buf_is_valid(buf)
+                and vim.api.nvim_buf_get_name(buf) == source_file
+            )
+        then
+            log.debug(
+                "target-path based detection resolved filetype '"
+                    .. tgt_ft
+                    .. "' for '"
+                    .. source_file
+                    .. "', but buffer "
+                    .. buf
+                    .. " no longer matches (renamed/closed); not reassigning"
+            )
+            return
+        end
+
+        log.debug(
+            "target-path based detection resolved filetype '"
+                .. tgt_ft
+                .. "' for source file '"
+                .. source_file
+                .. "'"
+        )
+
+        set_file_type(tgt_ft)
+
+        vim.filetype.add({
+            filename = {
+                [vim.fs.basename(source_file)] = tgt_ft,
+            },
+        })
+
+        -- Cache it
+        chezmoi_cache.new("ft_detect", { source_file }, {
+            args = {},
+            success = true,
+            data = { ft = tgt_ft },
+        })
+
+        log.debug(
+            "stored ft_detect result '"
+                .. tgt_ft
+                .. "' for source file '"
+                .. source_file
+                .. "' to cache"
+        )
     end)
 end
 
